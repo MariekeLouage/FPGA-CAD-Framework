@@ -3,6 +3,9 @@ dist/
 data/
 lib/
 build/
+out/
+target/
+*.iml
 
 benchmarks/*
 benchmarks_titan
@@ -19,8 +22,6 @@ tasks/example_java/*
 !tasks/example_vpr/
 tasks/example_vpr/*
 !tasks/example_vpr/config.json
-
-LiquidPart.iml
 
 nbproject
 .project
