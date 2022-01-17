@@ -1,11 +1,11 @@
 package place.interfaces;
 
+import place.interfaces.Logger.Stream;
+import place.util.Pair;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import place.interfaces.Logger.Stream;
-import place.util.Pair;
 
 
 class CLIOptions extends OptionsManager {
@@ -24,7 +24,7 @@ class CLIOptions extends OptionsManager {
 
         // Check if a help argument is provided
         int helpArgIndex = Math.max(this.args.indexOf("-h"), this.args.indexOf("--help"));
-        if(helpArgIndex > 0) {
+        if(helpArgIndex >= 0) {
             this.printHelp(Stream.OUT);
             System.exit(0);
         }

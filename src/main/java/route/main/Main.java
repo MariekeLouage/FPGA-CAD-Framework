@@ -1,29 +1,25 @@
 package route.main;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-
+import org.xml.sax.SAXException;
 import route.circuit.Circuit;
 import route.circuit.architecture.Architecture;
 import route.circuit.architecture.BlockCategory;
 import route.circuit.architecture.BlockType;
-import route.circuit.exceptions.InvalidFileFormatException;
-import route.circuit.io.NetParser;
-
 import route.circuit.block.GlobalBlock;
-
-import javax.xml.parsers.ParserConfigurationException;
-
-import org.xml.sax.SAXException;
-
+import route.circuit.exceptions.InvalidFileFormatException;
 import route.circuit.exceptions.PlacementException;
 import route.circuit.io.BlockNotFoundException;
 import route.circuit.io.IllegalSizeException;
+import route.circuit.io.NetParser;
 import route.circuit.io.PlaceParser;
 import route.circuit.pin.AbstractPin;
 import route.circuit.pin.GlobalPin;
 import route.route.ConnectionRouter;
+
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class Main {
 	
@@ -104,7 +100,7 @@ public class Main {
     			this.rrgFile);
     	try {
     		architecture.parse();
-    		architecture.getVprTiming(this.lookupDumpFile);
+    		//architecture.getVprTiming(this.lookupDumpFile);
     	} catch(IOException | InvalidFileFormatException | InterruptedException | ParserConfigurationException | SAXException error) {
     		this.logger.raise("Failed to parse architecture file or delay tables", error);
     	}

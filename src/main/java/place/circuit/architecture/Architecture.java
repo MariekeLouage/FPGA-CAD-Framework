@@ -1,32 +1,18 @@
 package place.circuit.architecture;
 
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
+import org.w3c.dom.*;
 import org.xml.sax.SAXException;
-
 import place.circuit.exceptions.InvalidFileFormatException;
 import place.util.Pair;
 import place.util.Triple;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
-
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.*;
+import java.io.*;
+import java.nio.file.Files;
+import java.util.*;
 
 /**
  * We make a lot of assumptions while parsing an architecture XML file.
@@ -66,6 +52,8 @@ public class Architecture implements Serializable {
 
     private int ioCapacity;
 
+    private Document xmlDocument;
+    private XPath xPath = XPathFactory.newInstance().newXPath();
 
     public Architecture(
             String circuitName,
@@ -85,8 +73,8 @@ public class Architecture implements Serializable {
 
         // Build a XML root
         DocumentBuilder xmlBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-        Document xmlDocument = xmlBuilder.parse(this.architectureFile);
-        Element root = xmlDocument.getDocumentElement();
+        this.xmlDocument = xmlBuilder.parse(this.architectureFile);
+        Element root = this.xmlDocument.getDocumentElement();
 
         // Get the architecture size (fixed or automatic)
         this.processLayout(root);
@@ -117,14 +105,27 @@ public class Architecture implements Serializable {
 
     private void processLayout(Element root) {
         Element layoutElement = this.getFirstChild(root, "layout");
-
-        this.autoSize = layoutElement.hasAttribute("auto");
-        if(this.autoSize) {
-            this.autoRatio = Double.parseDouble(layoutElement.getAttribute("auto"));
-
+        //VTR8 Layout: has a <auto_layout aspect_ratio="float"> or (multiple) <fixed_layout name="string" width="int" height="int"> as a child
+        NodeList autoLayoutList = layoutElement.getElementsByTagName("auto_layout");
+        NodeList fixedLayoutList = layoutElement.getElementsByTagName("fixed_layout");
+        if (autoLayoutList.getLength() > 0 && autoLayoutList.item(0).getNodeType() == Node.ELEMENT_NODE){
+            this.autoSize = true;
+            Element autoLayout = (Element) autoLayoutList.item(0);
+            this.autoRatio = Double.parseDouble(autoLayout.getAttribute("aspect_ratio"));
+        } else if(fixedLayoutList.getLength() > 0) {
+            // TODO: parse fixed_layout tags.
+            //  There can be multiple fixed_layout_tags, each with name, width and height attributes
+            throw new UnsupportedOperationException("Support for fixed_layout tags not implemented.");
         } else {
-            this.width = Integer.parseInt(layoutElement.getAttribute("width"));
-            this.height = Integer.parseInt(layoutElement.getAttribute("height"));
+            //VTR7 Layout: has attribute 'auto'
+            NodeList fixedLayout = layoutElement.getElementsByTagName("fixed_layout ");
+            this.autoSize = layoutElement.hasAttribute("auto");
+            if (this.autoSize) {
+                this.autoRatio = Double.parseDouble(layoutElement.getAttribute("auto"));
+            } else {
+                this.width = Integer.parseInt(layoutElement.getAttribute("width"));
+                this.height = Integer.parseInt(layoutElement.getAttribute("height"));
+            }
         }
     }
 
@@ -194,15 +195,32 @@ public class Architecture implements Serializable {
 
 
     private void processBlocks(Element root) throws ParseException {
+        // Goal: ??
+        // This supports both architecturefiles from VPR7 and  VPR8. VPR8 added <tiles> and <layout> as toplevel tags.
+        // The location information ('fill', 'col', ... ) is no longer in complexblocklist, but in layout.
+        // So, when tiles tag not available: parse with v7, else parse with v8
         Element blockListElement = this.getFirstChild(root, "complexblocklist");
         List<Element> blockElements = this.getChildElementsByTagName(blockListElement, "pb_type");
 
-        for(Element blockElement : blockElements) {
-            this.processBlockElement(null, blockElement);
+        Element tilesElement = this.getFirstChild(root, "tiles");
+        if (tilesElement == null) {
+            for(Element blockElement : blockElements) {
+                this.processBlockElement_v7(null, blockElement);
+            }
+        } else {
+            List<Element> tileElements = this.getChildElementsByTagName(blockListElement, "tile");
+            Element layoutElement = this.getFirstChild(root, "layout");
+                for(Element blockElement : blockElements) {
+                    this.processBlockElement_v8(null, blockElement);
+                }
         }
+
+
+
+
     }
 
-    private BlockType processBlockElement(BlockType parentBlockType, Element blockElement) throws ParseException {
+    private BlockType processBlockElement_v7(BlockType parentBlockType, Element blockElement) throws ParseException {
         String blockName = blockElement.getAttribute("name");
 
         boolean isGlobal = this.isGlobal(blockElement);
@@ -228,7 +246,7 @@ public class Architecture implements Serializable {
             // Get some extra properties that relate to the placement
             // of global blocks
 
-            blockCategory = this.getGlobalBlockCategory(blockElement);
+            blockCategory = this.getGlobalBlockCategory_v7(blockElement);
 
             if(blockCategory == BlockCategory.IO) {
                 // ASM: io blocks are always placed around the perimeter of the
@@ -268,6 +286,183 @@ public class Architecture implements Serializable {
 
 
 
+                } else if(type.equals("fill")) {
+                    start = 0;
+                    repeat = 1;
+
+                } else {
+                    assert(false);
+                }
+            }
+
+        }
+
+        // Build maps of inputs and outputs
+        Map<String, Integer> inputs = this.getPorts(blockElement, "input");
+        Map<String, Integer> outputs = this.getPorts(blockElement, "output");
+        Map<String, Integer> clockPorts = this.getPorts(blockElement, "clock");
+
+        BlockType blockType = BlockTypeData.getInstance().addType(
+                parentBlockType,
+                blockName,
+                blockCategory,
+                height,
+                start,
+                repeat,
+                priority,
+                isClocked,
+                inputs,
+                outputs,
+                clockPorts);
+
+        // If block type is null, this means that there are two block
+        // types in the architecture file that we cannot differentiate.
+        // This should of course never happen.
+        assert(blockType != null);
+
+        // Set the carry chain, if there is one
+        Pair<PortType, PortType> direct = this.getDirect(blockType, blockElement);
+
+        if(direct != null) {
+            PortType carryFromPort = direct.getFirst();
+            PortType carryToPort = direct.getSecond();
+
+            String directId = this.getDirectId(
+                    blockType.getName(),
+                    carryFromPort.getName(),
+                    carryToPort.getName());
+            int offsetY = this.directs.get(directId);
+
+            PortTypeData.getInstance().setCarryPorts(carryFromPort, carryToPort, offsetY);
+        }
+
+        // Add the different modes and process the children for that mode
+        /* Ugly data structure, but otherwise we would have to split it up
+         * in multiple structures. Each pair in the list represents a mode
+         * of this block type and its properties.
+         *   - the first part is a pair that contains a mode name and the
+         *     corresponding mode element
+         *   - the second part is a list of child types. For each child
+         *     type the number of children and the corresponding child
+         *     Element are stored.
+         */
+        List<Pair<Pair<BlockType, Element>, List<Pair<Integer, BlockType>>>> modesAndChildren = this.getModesAndChildren(blockType, blockElement);
+
+        for(Pair<Pair<BlockType, Element>, List<Pair<Integer, BlockType>>> modeAndChildren : modesAndChildren) {
+
+            Pair<BlockType, Element> mode = modeAndChildren.getFirst();
+            BlockType blockTypeWithMode = mode.getFirst();
+            Element modeElement = mode.getSecond();
+
+            List<BlockType> blockTypes = new ArrayList<>();
+            blockTypes.add(blockType);
+
+            // Add all the child types
+            for(Pair<Integer, BlockType> child : modeAndChildren.getSecond()) {
+                Integer numChildren = child.getFirst();
+                BlockType childBlockType = child.getSecond();
+                blockTypes.add(childBlockType);
+
+                BlockTypeData.getInstance().addChild(blockTypeWithMode, childBlockType, numChildren);
+            }
+
+            // Cache delays to and from this element
+            // We can't store them in PortTypeData until all blocks have been stored
+            this.cacheDelays(blockTypes, modeElement);
+        }
+
+        // Cache setup times (time from input to clock, and from clock to output)
+        this.cacheSetupTimes(blockType, blockElement);
+
+
+        return blockType;
+    }
+
+    private BlockType processBlockElement_v8(BlockType parentBlockType, Element blockElement) throws ParseException {
+
+
+        String blockName = blockElement.getAttribute("name");
+
+        boolean isGlobal = this.isGlobal(blockElement);
+        boolean isLeaf = this.isLeaf(blockElement);
+        boolean isClocked = this.isClocked(blockElement);
+
+
+        // Set block category, and some related properties
+        BlockCategory blockCategory;
+
+        // ASM: IO blocks are around the perimeter, HARDBLOCKs are in columns,
+        // CLB blocks fill the rest of the FPGA
+        int start = -1, repeat = -1, height = -1, priority = -1;
+
+
+        if(isLeaf) {
+            blockCategory = BlockCategory.LEAF;
+
+        } else if(!isGlobal) {
+            blockCategory = BlockCategory.INTERMEDIATE;
+
+        } else {
+            // Get some extra properties that relate to the placement
+            // of global blocks
+
+            blockCategory = this.getGlobalBlockCategory_v8(blockElement);
+
+            if(blockCategory == BlockCategory.IO) {
+                // ASM: io blocks are always placed around the perimeter of the
+                // architecture, ie. "<loc type="perimeter">" is set.
+                // This assumption is used throughout this entire placement suite.
+                // Many changes will have to be made in the different algorithms
+                // in order to get rid of this assumption.
+
+                // Query for optional capacity attribute, default is 1
+                NodeList capacityResult = this.xPathQuery(String.format("//tile[descendant::site[@pb_type='%s']][1]//@capacity", blockName));
+                if (capacityResult != null){
+                    Attr capacityAttr = (Attr) capacityResult.item(0);
+                    this.ioCapacity = Integer.parseInt(capacityAttr.getValue());
+                } else {
+                    this.ioCapacity = 1;
+                }
+
+            } else {
+
+                // Query for optional height attribute, default is 1
+                NodeList heightResult = this.xPathQuery(String.format("//tile[descendant::site[@pb_type='%s']][1]//@height", blockName));
+                if (heightResult != null){
+                    Attr heightAttr = (Attr) heightResult.item(0);
+                    height = Integer.parseInt(heightAttr.getValue());
+                } else {
+                    height = 1;
+                }
+
+                // Query layout tag associated with given pb_type. (ex: <fill .. />, <col ../> etc.)
+                NodeList layoutResult = this.xPathQuery(String.format("//layout//*[@type=//tile[descendant::site[@pb_type='%s']][1]/@name]", blockName));
+                if (layoutResult == null){
+                    System.out.println(String.format("Missing layout tag for pb_type '%s'", blockName));
+                    System.exit(1);
+                }
+
+                // We only look at the first element (tool can't handle e.g. multiple columns)
+                Element layout = (Element)layoutResult.item(0);
+
+                // Query for required priority attribute
+                priority = Integer.parseInt(layout.getAttribute("priority"));
+
+                // Query for layout type tag
+                String type = layout.getNodeName();
+
+                assert(!type.equals("rel"));
+
+                if(type.equals("col")) {
+                    start = Integer.parseInt(layout.getAttribute("startx"));
+
+                    if(layout.hasAttribute("repeatx")) {
+                        repeat = Integer.parseInt(layout.getAttribute("repeatx"));
+                    } else {
+                        repeat = -1;
+                        // If start is 0 and repeat is -1, the column calculation in Circuit.java fails
+                        assert(start != 0);
+                    }
                 } else if(type.equals("fill")) {
                     start = 0;
                     repeat = 1;
@@ -408,16 +603,27 @@ public class Architecture implements Serializable {
     }
 
 
-    private BlockCategory getGlobalBlockCategory(Element blockElement) throws ParseException {
+    private BlockCategory getGlobalBlockCategory_v7(Element blockElement) throws ParseException {
         // Check if this block type should fill the FPGA
         // If it does, we call this the CLB type (there can
         // only be one clb type in an architecture)
-        Element locElement = this.getFirstChild(this.getFirstChild(blockElement, "gridlocations"), "loc");
-        String type = locElement.getAttribute("type");
+        // In new VPR architecture, tiles and layout top level tags are added.
+        // These replace the gridlocations tag from complexblocks
 
-        if(type.equals("fill")) {
-            return BlockCategory.CLB;
+        Element gridLocations = this.getFirstChild(blockElement, "gridlocations");
+        if(gridLocations != null){
+            Element locElement = this.getFirstChild(gridLocations, "loc");
+            String type = locElement.getAttribute("type");
+            if(type.equals("fill")) {
+                return BlockCategory.CLB;
+            }
+        } else {
+            return null;
         }
+
+
+
+
 
         // Descend down until a leaf block is found
         // If the leaf block has has blif_model .input or
@@ -428,7 +634,7 @@ public class Architecture implements Serializable {
 
         while(elements.size() > 0) {
             Element element = elements.pop();
-
+            String name = element.getAttribute("name");
             String blifModel = element.getAttribute("blif_model");
             if(blifModel.equals(".input") || blifModel.equals(".output")) {
                 return BlockCategory.IO;
@@ -439,6 +645,7 @@ public class Architecture implements Serializable {
             modeElements.add(element);
 
             for(Element modeElement : modeElements) {
+                name = modeElement.getAttribute("name");
                 elements.addAll(this.getChildElementsByTagName(modeElement, "pb_type"));
             }
         }
@@ -446,7 +653,58 @@ public class Architecture implements Serializable {
         return BlockCategory.HARDBLOCK;
     }
 
+    private BlockCategory getGlobalBlockCategory_v8(Element blockElement) throws ParseException {
+        // Check if this block type should fill the FPGA, in v8 this is found under layout
+        // If it does, we call this the CLB type (there can
+        // only be one clb type in an architecture)
 
+        // To find layout type for block element:
+        // first step: which tile implements pb_type?
+        // second step: get layout type for tile
+        String pbTypeName = blockElement.getAttribute("name");
+        String layoutType;
+        try {
+            XPathExpression expr = this.xPath.compile(String.format("//layout//*[@type=//tile[descendant::site[@pb_type='%s']][1]/@name][1]", pbTypeName));
+            NodeList result = (NodeList) expr.evaluate(this.xmlDocument, XPathConstants.NODESET);
+            layoutType = result.item(0).getNodeName();
+        } catch (XPathExpressionException e) {
+            layoutType = "";
+            System.out.println(String.format("Found no layout for pb_type name=\"%s\"", pbTypeName));
+            System.exit(1);
+        }
+
+
+        if(layoutType.equals("fill")) {
+            return BlockCategory.CLB;
+        }
+
+
+        // Descend down until a leaf block is found
+        // If the leaf block has has blif_model .input or
+        // .output, this is the io block type (there can
+        // only be one io type in an architecture)
+        Stack<Element> elements = new Stack<Element>();
+        elements.add(blockElement);
+
+        while(elements.size() > 0) {
+            Element element = elements.pop();
+            String name = element.getAttribute("name");
+            String blifModel = element.getAttribute("blif_model");
+            if(blifModel.equals(".input") || blifModel.equals(".output")) {
+                return BlockCategory.IO;
+            }
+
+            List<Element> modeElements = this.getChildElementsByTagName(element, "mode");
+            modeElements.add(element);
+
+            for(Element modeElement : modeElements) {
+                name = modeElement.getAttribute("name");
+                elements.addAll(this.getChildElementsByTagName(modeElement, "pb_type"));
+            }
+        }
+
+        return BlockCategory.HARDBLOCK;
+    }
 
     private Map<String, Integer> getPorts(Element blockElement, String portType) {
         Map<String, Integer> ports = new HashMap<>();
@@ -602,10 +860,9 @@ public class Architecture implements Serializable {
                 List<Element> childElements = this.getChildElementsByTagName(modeElement, "pb_type");
                 for(Element childElement : childElements) {
                     int numChildren = Integer.parseInt(childElement.getAttribute("num_pb"));
-                    BlockType childBlockType = this.processBlockElement(blockTypeWithMode, childElement);
+                    BlockType childBlockType = this.processBlockElement_v7(blockTypeWithMode, childElement);
                     modeChildren.add(new Pair<>(numChildren, childBlockType));
                 }
-
                 modesAndChildren.add(new Pair<>(mode, modeChildren));
             }
         }
@@ -972,6 +1229,17 @@ public class Architecture implements Serializable {
 
         ArchitectureException(String message) {
             super(message);
+        }
+    }
+
+    private NodeList xPathQuery(String query){
+        try {
+            XPathExpression expr = this.xPath.compile(query);
+            NodeList result = (NodeList) expr.evaluate(this.xmlDocument, XPathConstants.NODESET);
+            return result;
+        } catch (XPathExpressionException e) {
+            System.out.println(String.format("XPath query: \"%s\" failed.", query));
+            return null;
         }
     }
 }

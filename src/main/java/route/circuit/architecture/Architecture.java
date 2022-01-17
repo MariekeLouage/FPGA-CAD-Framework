@@ -5,27 +5,15 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-
-import route.util.Pair;
 import route.circuit.exceptions.InvalidFileFormatException;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
+import route.util.Pair;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import java.io.*;
+import java.nio.file.Files;
+import java.util.*;
 
 /**
  * We make a lot of assumptions while parsing an architecture XML file.
@@ -977,35 +965,35 @@ public class Architecture implements Serializable {
 
 
 
-    public void getVprTiming(String vprCommand) throws IOException, InterruptedException, InvalidFileFormatException {
-        // For this method to work, the macro PRINT_ARRAYS should be defined
-        // in vpr: place/timing_place_lookup.c
-
-        // Run vpr
-        String command = String.format(
-                "%s %s %s --blif_file %s --net_file %s --place_file vpr_tmp.place --place --init_t 1 --exit_t 1",
-                vprCommand, this.architectureFile, this.circuitName, this.blifFile, this.netFile);
-
-        Process process = null;
-        process = Runtime.getRuntime().exec(command);
-
-
-        // Read output to avoid buffer overflow and deadlock
-        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        while ((reader.readLine()) != null) {}
-        process.waitFor();
-
-
-        // Build delay tables
-        String lookupDumpPath = "lookup_dump.echo";
-        File lookupDumpFile = new File(lookupDumpPath);
-        this.buildDelayTables(lookupDumpFile);
-
-        // Clean up
-        this.deleteFile("vpr_tmp.place");
-        this.deleteFile("vpr_stdout.log");
-        this.deleteFile(lookupDumpPath);
-    }
+//    public void getVprTiming(String vprCommand) throws IOException, InterruptedException, InvalidFileFormatException {
+//        // For this method to work, the macro PRINT_ARRAYS should be defined
+//        // in vpr: place/timing_place_lookup.c
+//
+//        // Run vpr
+//        String command = String.format(
+//                "%s %s %s --blif_file %s --net_file %s --place_file vpr_tmp.place --place --init_t 1 --exit_t 1",
+//                vprCommand, this.architectureFile, this.circuitName, this.blifFile, this.netFile);
+//
+//        Process process = null;
+//        process = Runtime.getRuntime().exec(command);
+//
+//
+//        // Read output to avoid buffer overflow and deadlock
+//        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+//        while ((reader.readLine()) != null) {}
+//        process.waitFor();
+//
+//
+//        // Build delay tables
+//        String lookupDumpPath = "lookup_dump.echo";
+//        File lookupDumpFile = new File(lookupDumpPath);
+//        this.buildDelayTables(lookupDumpFile);
+//
+//        // Clean up
+//        this.deleteFile("vpr_tmp.place");
+//        this.deleteFile("vpr_stdout.log");
+//        this.deleteFile(lookupDumpPath);
+//    }
 
     public void getVprTiming(File lookupDumpFile) throws IOException, InvalidFileFormatException {
         this.buildDelayTables(lookupDumpFile);

@@ -1,5 +1,7 @@
 package place.main;
 
+import org.jfree.ui.RefineryUtilities;
+import org.xml.sax.SAXException;
 import place.circuit.Circuit;
 import place.circuit.architecture.Architecture;
 import place.circuit.architecture.BlockCategory;
@@ -8,23 +10,19 @@ import place.circuit.architecture.ParseException;
 import place.circuit.block.GlobalBlock;
 import place.circuit.exceptions.InvalidFileFormatException;
 import place.circuit.exceptions.PlacementException;
-import place.circuit.io.BlockNotFoundException;
-import place.circuit.io.HierarchyParser;
-import place.circuit.io.IllegalSizeException;
-import place.circuit.io.NetParser;
-import place.circuit.io.PlaceDumper;
-import place.circuit.io.PlaceParser;
+import place.circuit.io.*;
 import place.hierarchy.LeafNode;
 import place.interfaces.Logger;
 import place.interfaces.Options;
-import place.interfaces.OptionsManager;
 import place.interfaces.Options.Required;
+import place.interfaces.OptionsManager;
 import place.placers.Placer;
 import place.placers.simulatedannealing.EfficientBoundingBoxNetCC;
 import place.util.Timer;
 import place.visual.LineChart;
 import place.visual.PlacementVisualizer;
 
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -33,11 +31,6 @@ import java.lang.management.ManagementFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-
-import javax.xml.parsers.ParserConfigurationException;
-
-//import org.jfree.ui.RefineryUtilities;
-import org.xml.sax.SAXException;
 
 public class Main {
 
@@ -88,7 +81,7 @@ public class Main {
         options.add(O_PARTIAL_PLACE_FILE, "placement of a part of the blocks", File.class, Required.FALSE);
         options.add(O_OUTPUT_PLACE_FILE, "(default: based on the blif file)", File.class, Required.FALSE);
 
-        options.add(O_VPR_TIMING, "Use vpr timing information", Boolean.TRUE);
+        options.add(O_VPR_TIMING, "Use vpr timing information", Boolean.FALSE);
         options.add(O_VPR_COMMAND, "Path to vpr executable", "./vpr");
         options.add(O_LOOKUP_DUMP_FILE, "Path to a vpr lookup_dump.echo file", File.class, Required.FALSE);
 

@@ -1,11 +1,11 @@
 package route.circuit.timing;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import route.circuit.architecture.DelayTables;
 import route.circuit.block.GlobalBlock;
 import route.circuit.pin.AbstractPin;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class TimingNode {
 

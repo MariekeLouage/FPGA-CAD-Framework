@@ -1,13 +1,9 @@
 package place.circuit.architecture;
 
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import place.util.Triple;
+
+import java.io.Serializable;
+import java.util.*;
 
 class BlockTypeData implements Serializable {
     /**
@@ -193,7 +189,18 @@ class BlockTypeData implements Serializable {
 
     int getModeIndex(int typeIndex, String argumentModeName) {
         String modeName = (argumentModeName == null) ? "" : argumentModeName;
-        return this.modes.get(typeIndex).get(modeName);
+        if (modeName.equals("X")){
+            modeName = "";
+            if (this.modes.get(typeIndex).containsKey(modeName)) {
+                return this.modes.get(typeIndex).get(modeName);
+            } else {
+                return 0;
+            }
+        } else {
+            return this.modes.get(typeIndex).get(modeName);
+        }
+
+
     }
 
 

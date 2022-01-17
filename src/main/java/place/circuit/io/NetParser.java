@@ -1,17 +1,5 @@
 package place.circuit.io;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
-
 import place.circuit.Circuit;
 import place.circuit.architecture.Architecture;
 import place.circuit.architecture.BlockType;
@@ -22,6 +10,9 @@ import place.circuit.block.LeafBlock;
 import place.circuit.block.LocalBlock;
 import place.circuit.pin.AbstractPin;
 import place.circuit.pin.GlobalPin;
+
+import java.io.*;
+import java.util.*;
 
 public class NetParser {
 
@@ -115,6 +106,9 @@ public class NetParser {
             case "<bloc":
                 if(!multiLine.substring(multiLine.length() - 2).equals("/>")) {
                     this.processBlockLine(multiLine);
+                } else {
+                    this.processBlockLine(multiLine);
+                    this.processBlockEndLine();
                 }
                 break;
 
@@ -230,11 +224,17 @@ public class NetParser {
 
 
         int modeStart = indexEnd + 9;
-        int modeEnd = line.length() - 2;
+        int modeEnd = line.indexOf("\"", modeStart); //line.length() - 2;
         String mode = modeStart < modeEnd ? line.substring(modeStart, modeEnd) : null;
 
 
         BlockType parentBlockType = this.blockStack.isEmpty() ? null : this.blockStack.peek().getType();
+        if (mode != null && mode.equals("default")){
+            mode = type;
+        }
+        if (mode == null && name.equals("open")){
+            mode = "X"; // == don't care; The mode for an open block might not be specified, then give a don't care to the blocktype initializer.
+        }
         BlockType blockType = new BlockType(parentBlockType, type, mode);
 
 
@@ -341,7 +341,7 @@ public class NetParser {
 
         AbstractBlock sinkBlock = sinkPin.getOwner();
 
-        int separator = net.lastIndexOf("->");
+        int separator = net.lastIndexOf("-&");
 
         if(separator != -1) {
             int pinIndexEnd = separator - 1;
@@ -393,10 +393,13 @@ public class NetParser {
                 sourceBlock = sinkBlock.getChild(sourceBlockType, sourceBlockIndex);
             }
 
+
             PortType sourcePortType = new PortType(sourceBlock.getType(), sourcePortName);
             AbstractPin sourcePin = sourceBlock.getPin(sourcePortType, sourcePinIndex);
             sourcePin.addSink(sinkPin);
             sinkPin.setSource(sourcePin);
+
+
 
 
         // The current block is a leaf block. We can add a reference from the net name to

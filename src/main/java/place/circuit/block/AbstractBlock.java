@@ -1,13 +1,13 @@
 package place.circuit.block;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import place.circuit.architecture.BlockCategory;
 import place.circuit.architecture.BlockType;
 import place.circuit.architecture.PortType;
 import place.circuit.pin.AbstractPin;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 
 
@@ -23,6 +23,8 @@ public abstract class AbstractBlock implements Comparable<AbstractBlock> {
     private List<AbstractPin> pins;
 
     public AbstractBlock(String name, BlockType blockType, int index) {
+
+
         this.name = new String(name);
         this.blockType = blockType;
         this.category = blockType.getCategory();
@@ -97,7 +99,9 @@ public abstract class AbstractBlock implements Comparable<AbstractBlock> {
         return this.getChildren(blockType).get(childIndex);
     }
     public void setChild(LocalBlock block, int childIndex) {
+
         int childStart = this.blockType.getChildRange(block.getType())[0];
+
         this.children.set(childStart + childIndex, block);
     }
 
