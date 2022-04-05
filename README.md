@@ -35,8 +35,11 @@ Routing:
 
 </ul>
 
-Usage
+Getting started
 ---------------
+1. Clone this directory
+2. Open the cloned directory as a Maven project in a Java IDE (ej. Intellij). The necessary packages will get installed automatically.
+
 
 Some parts of this toolflow require external packages. Please contact us if you want more information.
 
